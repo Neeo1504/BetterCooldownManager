@@ -401,7 +401,7 @@ local function AddClassSpecToggleDropdownEntry(list, order, seenValues, classTok
     local resolvedSpecName = specName or TitleCaseToken(normalizedSpecToken) or normalizedSpecToken
 
     local classIconLabel = GetClassIconLabel(normalizedClassToken)
-    local simpleSpecLabel = FormatSpecLabel(resolvedSpecName, specIcon)
+    local simpleSpecLabel = FormatSpecLabel(resolvedSpecName, specIcon, normalizedClassToken)
     if classIconLabel ~= "" then
         list[value] = classIconLabel .. " " .. simpleSpecLabel
     else
@@ -1597,6 +1597,8 @@ local function CreateCooldownViewerItemSettings(parentContainer, containerToRefr
     dataListDropdown:SetRelativeWidth(0.5)
     parentContainer:AddChild(dataListDropdown)
 
+    local classSpecFilterList, classSpecFilterOrder = BuildClassSpecToggleDropdownData()
+
     if ItemDB then
 
         local sortedItems = {}
@@ -1607,6 +1609,7 @@ local function CreateCooldownViewerItemSettings(parentContainer, containerToRefr
         for _, item in ipairs(sortedItems) do
             local itemId = item.id
             local data = item.data
+            data.classSpecFilters = NormalizeItemSpellClassSpecFilters(data.classSpecFilters, classSpecFilterList)
 
             local itemCheckbox = AG:Create("CheckBox")
             itemCheckbox:SetLabel("[" .. (data.layoutIndex or "?") .. "] " .. (FetchItemSpellInformation(itemId, data.entryType) or LL("Unknown")))
@@ -1614,24 +1617,24 @@ local function CreateCooldownViewerItemSettings(parentContainer, containerToRefr
             itemCheckbox:SetCallback("OnValueChanged", function(_, _, value) ItemDB[itemId].isActive = value BCDM:UpdateCooldownViewer("Item") end)
             itemCheckbox:SetCallback("OnEnter", function(widget) ShowItemTooltip(widget.frame, itemId) end)
             itemCheckbox:SetCallback("OnLeave", function() GameTooltip:Hide() end)
-            itemCheckbox:SetRelativeWidth(0.6)
+            itemCheckbox:SetRelativeWidth(0.5)
             parentContainer:AddChild(itemCheckbox)
 
             local moveUpButton = AG:Create("Button")
             moveUpButton:SetText(LL("Up"))
-            moveUpButton:SetRelativeWidth(0.1333)
+            moveUpButton:SetRelativeWidth(0.1)
             moveUpButton:SetCallback("OnClick", function() BCDM:AdjustItemLayoutIndex(-1, itemId) parentContainer:ReleaseChildren() CreateCooldownViewerItemSettings(parentContainer, containerToRefresh) end)
             parentContainer:AddChild(moveUpButton)
 
             local moveDownButton = AG:Create("Button")
             moveDownButton:SetText(LL("Down"))
-            moveDownButton:SetRelativeWidth(0.1333)
+            moveDownButton:SetRelativeWidth(0.1)
             moveDownButton:SetCallback("OnClick", function() BCDM:AdjustItemLayoutIndex(1, itemId) parentContainer:ReleaseChildren() CreateCooldownViewerItemSettings(parentContainer, containerToRefresh) end)
             parentContainer:AddChild(moveDownButton)
 
             local removeItemButton = AG:Create("Button")
             removeItemButton:SetText(LL("X"))
-            removeItemButton:SetRelativeWidth(0.1333)
+            removeItemButton:SetRelativeWidth(0.1)
             removeItemButton:SetCallback("OnClick", function()
                 BCDM:AdjustItemList(itemId, "remove")
                 BCDM:UpdateCooldownViewer("Item")
@@ -1639,6 +1642,36 @@ local function CreateCooldownViewerItemSettings(parentContainer, containerToRefr
                 CreateCooldownViewerItemSettings(parentContainer, containerToRefresh)
             end)
             parentContainer:AddChild(removeItemButton)
+
+            local classSpecFilterDropdown = AG:Create("Dropdown")
+            classSpecFilterDropdown:SetLabel(LL("Load"))
+            classSpecFilterDropdown:SetList(classSpecFilterList, classSpecFilterOrder)
+            classSpecFilterDropdown:SetMultiselect(true)
+            classSpecFilterDropdown:SetPulloutWidth(360)
+            ApplyItemSpellClassSpecFiltersToDropdown(classSpecFilterDropdown, data.classSpecFilters, classSpecFilterList)
+            classSpecFilterDropdown:SetCallback("OnValueChanged", function(_, _, value, checked)
+                local classToken, specToken = ParseClassSpecDropdownValue(value)
+                if not classToken or not specToken then return end
+                local entry = ItemDB[itemId]
+                if not entry then return end
+                entry.classSpecFilters = entry.classSpecFilters or {}
+                local normalizedValue = classToken .. ":" .. specToken
+                if checked then
+                    entry.classSpecFilters[normalizedValue] = true
+                else
+                    entry.classSpecFilters[normalizedValue] = nil
+                end
+                entry.classSpecFilters = NormalizeItemSpellClassSpecFilters(entry.classSpecFilters, classSpecFilterList)
+                BCDM:UpdateCooldownViewer("Item")
+            end)
+            classSpecFilterDropdown:SetCallback("OnClosed", function()
+                local entry = ItemDB[itemId]
+                if not (entry and entry.classSpecFilters and next(entry.classSpecFilters)) then
+                    classSpecFilterDropdown:SetText(LL("Always"))
+                end
+            end)
+            classSpecFilterDropdown:SetRelativeWidth(0.2)
+            parentContainer:AddChild(classSpecFilterDropdown)
         end
     end
 
@@ -1746,7 +1779,7 @@ local function CreateCooldownViewerItemSpellSettings(parentContainer, containerT
             parentContainer:AddChild(removeItemButton)
 
             local classSpecFilterDropdown = AG:Create("Dropdown")
-            classSpecFilterDropdown:SetLabel(LL("Load On Class/Specialization"))
+            classSpecFilterDropdown:SetLabel(LL("Load"))
             classSpecFilterDropdown:SetList(classSpecFilterList, classSpecFilterOrder)
             classSpecFilterDropdown:SetMultiselect(true)
             classSpecFilterDropdown:SetPulloutWidth(360)

@@ -66,6 +66,34 @@ local function ShouldShowItem(customDB, itemId)
     return itemCount > 0
 end
 
+local function ParseClassSpecFilterValue(value)
+    if not value then return end
+    local normalizedValue = tostring(value):upper()
+    local classToken, specToken = string.match(normalizedValue, "^(%u+):([%u%d_]+)$")
+    if not classToken or not specToken then return end
+    return classToken, (BCDM:NormalizeSpecToken(specToken) or specToken)
+end
+
+local function IsEntryEnabledForPlayerSpec(entryData, playerClass, playerSpecialization)
+    local classSpecFilters = entryData and entryData.classSpecFilters
+    if type(classSpecFilters) ~= "table" then
+        return true
+    end
+
+    local hasActiveFilter = false
+    for classSpecValue, isEnabled in pairs(classSpecFilters) do
+        if isEnabled then
+            hasActiveFilter = true
+            local classToken, specToken = ParseClassSpecFilterValue(classSpecValue)
+            if classToken and classToken == playerClass and ((not playerSpecialization) or playerSpecialization == specToken) then
+                return true
+            end
+        end
+    end
+
+    return not hasActiveFilter
+end
+
 local function CreateCustomIcon(itemId)
     local CooldownManagerDB = BCDM.db.profile
     local GeneralDB = CooldownManagerDB.General
@@ -151,6 +179,10 @@ end
 local function CreateCustomIcons(iconTable, visibleItemIds)
     local CustomDB = BCDM.db.profile.CooldownManager.Item
     local Items = CustomDB.Items
+    local playerClass = select(2, UnitClass("player"))
+    local specIndex = GetSpecialization()
+    local specID, specName = specIndex and GetSpecializationInfo(specIndex)
+    local playerSpecialization = BCDM:NormalizeSpecToken(specName, specID, specIndex)
 
     local isWarlock = select(2, UnitClass("player")) == "WARLOCK"
     local pactOfGluttony = C_SpellBook.IsSpellKnown(386689)
@@ -170,11 +202,12 @@ local function CreateCustomIcons(iconTable, visibleItemIds)
         local healthstoneIndex = nil
         for itemId, data in pairs(Items) do
             local layoutIndex = data.layoutIndex or math.huge
+            local isEntryEnabled = data.isActive and IsEntryEnabledForPlayerSpec(data, playerClass, playerSpecialization)
             if isWarlock and (itemId == healthstoneBaseId or itemId == healthstoneGluttonyId) then
-                if data.isActive then
+                if isEntryEnabled then
                     healthstoneIndex = math.min(healthstoneIndex or math.huge, layoutIndex)
                 end
-            elseif data.isActive then
+            elseif isEntryEnabled then
                 if ShouldShowItem(CustomDB, itemId) then
                     table.insert(items, {id = itemId, index = layoutIndex})
                 end
@@ -266,12 +299,18 @@ local function LayoutCustomItemBar()
                     return
                 end
                 local entry = items[itemId]
+                local playerClass = select(2, UnitClass("player"))
+                local specIndex = GetSpecialization()
+                local specID, specName = specIndex and GetSpecializationInfo(specIndex)
+                local playerSpecialization = BCDM:NormalizeSpecToken(specName, specID, specIndex)
                 local isWarlock = select(2, UnitClass("player")) == "WARLOCK"
-                if not (entry and entry.isActive) then
+                if not (entry and entry.isActive and IsEntryEnabledForPlayerSpec(entry, playerClass, playerSpecialization)) then
                     if isWarlock and (itemId == 224464 or itemId == 5512) then
                         local baseEntry = items[5512]
                         local gluttonyEntry = items[224464]
-                        if not ((baseEntry and baseEntry.isActive) or (gluttonyEntry and gluttonyEntry.isActive)) then
+                        local hasValidBaseEntry = baseEntry and baseEntry.isActive and IsEntryEnabledForPlayerSpec(baseEntry, playerClass, playerSpecialization)
+                        local hasValidGluttonyEntry = gluttonyEntry and gluttonyEntry.isActive and IsEntryEnabledForPlayerSpec(gluttonyEntry, playerClass, playerSpecialization)
+                        if not (hasValidBaseEntry or hasValidGluttonyEntry) then
                             return
                         end
                     else
