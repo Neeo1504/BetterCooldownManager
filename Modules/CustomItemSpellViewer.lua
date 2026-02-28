@@ -66,6 +66,34 @@ local function ShouldShowItem(customDB, itemId)
     return itemCount > 0
 end
 
+local function ParseClassSpecFilterValue(value)
+    if not value then return end
+    local normalizedValue = tostring(value):upper()
+    local classToken, specToken = string.match(normalizedValue, "^(%u+):([%u%d_]+)$")
+    if not classToken or not specToken then return end
+    return classToken, (BCDM:NormalizeSpecToken(specToken) or specToken)
+end
+
+local function IsEntryEnabledForPlayerSpec(entryData, playerClass, playerSpecialization)
+    local classSpecFilters = entryData and entryData.classSpecFilters
+    if type(classSpecFilters) ~= "table" then
+        return true
+    end
+
+    local hasActiveFilter = false
+    for classSpecValue, isEnabled in pairs(classSpecFilters) do
+        if isEnabled then
+            hasActiveFilter = true
+            local classToken, specToken = ParseClassSpecFilterValue(classSpecValue)
+            if classToken and classToken == playerClass and ((not playerSpecialization) or playerSpecialization == specToken) then
+                return true
+            end
+        end
+    end
+
+    return not hasActiveFilter
+end
+
 local function CreateCustomItemIcon(itemId)
     local CooldownManagerDB = BCDM.db.profile
     local GeneralDB = CooldownManagerDB.General
@@ -237,6 +265,10 @@ end
 local function CreateCustomIcons(iconTable, visibleItemIds)
     local CustomDB = BCDM.db.profile.CooldownManager.ItemSpell
     local Items = CustomDB.ItemsSpells
+    local playerClass = select(2, UnitClass("player"))
+    local specIndex = GetSpecialization()
+    local specID, specName = specIndex and GetSpecializationInfo(specIndex)
+    local playerSpecialization = BCDM:NormalizeSpecToken(specName, specID, specIndex)
 
     wipe(iconTable)
     if visibleItemIds then wipe(visibleItemIds) end
@@ -244,7 +276,7 @@ local function CreateCustomIcons(iconTable, visibleItemIds)
     if Items then
         local items = {}
         for entryId, data in pairs(Items) do
-            if data.isActive then
+            if data.isActive and IsEntryEnabledForPlayerSpec(data, playerClass, playerSpecialization) then
                 local entryType = ResolveItemSpellEntryType(entryId, data)
                 if entryType then
                     if entryType == "item" and not ShouldShowItem(CustomDB, entryId) then

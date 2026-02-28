@@ -271,6 +271,14 @@ local function FormatClassLabel(classLabel, classToken)
     return icon .. classLabel
 end
 
+local function GetClassIconLabel(classToken)
+    if not classToken or not CLASS_ICON_TCOORDS or not CLASS_ICON_TCOORDS[classToken] then
+        return ""
+    end
+    local coords = CLASS_ICON_TCOORDS[classToken]
+    return string.format("|TInterface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES:16:16:0:0:256:256:%d:%d:%d:%d|t", coords[1] * 256, coords[2] * 256, coords[3] * 256, coords[4] * 256)
+end
+
 local function FormatSpecLabel(specName, specIcon, classToken)
     local colourPrefix = classToken and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classToken] and RAID_CLASS_COLORS[classToken].colorStr and ("|c" .. RAID_CLASS_COLORS[classToken].colorStr)
     local colourSuffix = colourPrefix and "|r" or ""
@@ -376,9 +384,125 @@ end
 
 local function ParseClassSpecDropdownValue(value)
     if not value then return end
-    local classToken, specToken = string.match(value, "^(%u+):(%u+)$")
+    local classToken, specToken = string.match(tostring(value):upper(), "^(%u+):([%u%d_]+)$")
     if not classToken or not specToken then return end
-    return classToken, specToken
+    return classToken, (BCDM:NormalizeSpecToken(specToken) or specToken)
+end
+
+local function AddClassSpecToggleDropdownEntry(list, order, seenValues, classToken, specToken, specName, specIcon)
+    if not classToken or not specToken then return end
+    local normalizedClassToken = tostring(classToken):upper()
+    local normalizedSpecToken = BCDM:NormalizeSpecToken(specToken)
+    if not normalizedSpecToken then return end
+
+    local value = normalizedClassToken .. ":" .. normalizedSpecToken
+    if seenValues[value] then return end
+
+    local resolvedSpecName = specName or TitleCaseToken(normalizedSpecToken) or normalizedSpecToken
+
+    local classIconLabel = GetClassIconLabel(normalizedClassToken)
+    local simpleSpecLabel = FormatSpecLabel(resolvedSpecName, specIcon)
+    if classIconLabel ~= "" then
+        list[value] = classIconLabel .. " " .. simpleSpecLabel
+    else
+        list[value] = simpleSpecLabel
+    end
+    order[#order + 1] = value
+    seenValues[value] = true
+end
+
+local function BuildClassSpecToggleDropdownData()
+    local list = {}
+    local order = {}
+    local seenValues = {}
+    local orderedClasses = {}
+    local seenClasses = {}
+
+    if CLASS_SORT_ORDER and C_ClassInfo and C_ClassInfo.GetClassInfo then
+        for _, classId in ipairs(CLASS_SORT_ORDER) do
+            local classInfo = C_ClassInfo.GetClassInfo(classId)
+            if classInfo and classInfo.classFile then
+                orderedClasses[#orderedClasses + 1] = classInfo.classFile
+                seenClasses[classInfo.classFile] = true
+            end
+        end
+    end
+
+    local fallbackClasses = {}
+    for classToken in pairs(ClassToPrettyClass) do
+        if not seenClasses[classToken] then
+            fallbackClasses[#fallbackClasses + 1] = classToken
+        end
+    end
+    table.sort(fallbackClasses)
+    for _, classToken in ipairs(fallbackClasses) do
+        orderedClasses[#orderedClasses + 1] = classToken
+    end
+
+    for _, classToken in ipairs(orderedClasses) do
+        local classId = GetClassIdByToken(classToken)
+        if classId and C_SpecializationInfo and C_SpecializationInfo.GetNumSpecializationsForClassID and GetSpecializationInfoForClassID then
+            local numSpecs = C_SpecializationInfo.GetNumSpecializationsForClassID(classId)
+            if numSpecs then
+                for i = 1, numSpecs do
+                    local specID, specName, _, specIcon = GetSpecializationInfoForClassID(classId, i)
+                    if type(specID) == "table" then
+                        local info = specID
+                        specID = info.specID or info.id
+                        specName = info.name or specName
+                        specIcon = info.icon or specIcon
+                    end
+                    if specID and (not specIcon) and C_SpecializationInfo.GetSpecializationInfoByID then
+                        local info = C_SpecializationInfo.GetSpecializationInfoByID(specID)
+                        if info then
+                            specName = specName or info.name
+                            specIcon = specIcon or info.icon
+                        end
+                    end
+                    local specToken = BCDM:NormalizeSpecToken(specName, specID)
+                    AddClassSpecToggleDropdownEntry(list, order, seenValues, classToken, specToken, specName, specIcon)
+                end
+            end
+        end
+    end
+
+    return list, order
+end
+
+local function NormalizeItemSpellClassSpecFilters(classSpecFilters, validValues)
+    if type(classSpecFilters) ~= "table" then return end
+
+    local normalized = {}
+    for classSpecValue, isEnabled in pairs(classSpecFilters) do
+        if isEnabled then
+            local classToken, specToken = ParseClassSpecDropdownValue(classSpecValue)
+            if classToken and specToken then
+                local normalizedValue = classToken .. ":" .. specToken
+                if (not validValues) or validValues[normalizedValue] then
+                    normalized[normalizedValue] = true
+                end
+            end
+        end
+    end
+
+    if next(normalized) then
+        return normalized
+    end
+end
+
+local function ApplyItemSpellClassSpecFiltersToDropdown(dropdown, classSpecFilters, validValues)
+    local hasSelection = false
+    if type(classSpecFilters) == "table" then
+        for classSpecValue, isEnabled in pairs(classSpecFilters) do
+            if isEnabled and ((not validValues) or validValues[classSpecValue]) then
+                dropdown:SetItemValue(classSpecValue, true)
+                hasSelection = true
+            end
+        end
+    end
+    if not hasSelection then
+        dropdown:SetText(LL("Always"))
+    end
 end
 
 local function PopulateClassSpecDropdown(dropdown, spellDB)
@@ -1575,6 +1699,8 @@ local function CreateCooldownViewerItemSpellSettings(parentContainer, containerT
     dataListDropdown:SetRelativeWidth(0.33)
     parentContainer:AddChild(dataListDropdown)
 
+    local classSpecFilterList, classSpecFilterOrder = BuildClassSpecToggleDropdownData()
+
     if ItemSpellDB then
 
         local sortedItems = {}
@@ -1585,6 +1711,7 @@ local function CreateCooldownViewerItemSpellSettings(parentContainer, containerT
         for _, item in ipairs(sortedItems) do
             local itemId = item.id
             local data = item.data
+            data.classSpecFilters = NormalizeItemSpellClassSpecFilters(data.classSpecFilters, classSpecFilterList)
 
             local itemCheckbox = AG:Create("CheckBox")
             itemCheckbox:SetLabel("[" .. data.layoutIndex .. "] " .. (FetchItemSpellInformation(itemId, data.entryType) or LL("Unknown")))
@@ -1592,24 +1719,24 @@ local function CreateCooldownViewerItemSpellSettings(parentContainer, containerT
             itemCheckbox:SetCallback("OnValueChanged", function(_, _, value) ItemSpellDB[itemId].isActive = value BCDM:UpdateCooldownViewer("ItemSpell") end)
             itemCheckbox:SetCallback("OnEnter", function(widget) ShowItemSpellTooltip(widget.frame, itemId, data.entryType) end)
             itemCheckbox:SetCallback("OnLeave", function() GameTooltip:Hide() end)
-            itemCheckbox:SetRelativeWidth(0.6)
+            itemCheckbox:SetRelativeWidth(0.5)
             parentContainer:AddChild(itemCheckbox)
 
             local moveUpButton = AG:Create("Button")
             moveUpButton:SetText(LL("Up"))
-            moveUpButton:SetRelativeWidth(0.1333)
+            moveUpButton:SetRelativeWidth(0.1)
             moveUpButton:SetCallback("OnClick", function() BCDM:AdjustItemsSpellsLayoutIndex(-1, itemId) parentContainer:ReleaseChildren() CreateCooldownViewerItemSpellSettings(parentContainer, containerToRefresh) end)
             parentContainer:AddChild(moveUpButton)
 
             local moveDownButton = AG:Create("Button")
             moveDownButton:SetText(LL("Down"))
-            moveDownButton:SetRelativeWidth(0.1333)
+            moveDownButton:SetRelativeWidth(0.1)
             moveDownButton:SetCallback("OnClick", function() BCDM:AdjustItemsSpellsLayoutIndex(1, itemId) parentContainer:ReleaseChildren() CreateCooldownViewerItemSpellSettings(parentContainer, containerToRefresh) end)
             parentContainer:AddChild(moveDownButton)
 
             local removeItemButton = AG:Create("Button")
             removeItemButton:SetText(LL("X"))
-            removeItemButton:SetRelativeWidth(0.1333)
+            removeItemButton:SetRelativeWidth(0.1)
             removeItemButton:SetCallback("OnClick", function()
                 BCDM:AdjustItemsSpellsList(itemId, "remove")
                 BCDM:UpdateCooldownViewer("ItemSpell")
@@ -1617,6 +1744,36 @@ local function CreateCooldownViewerItemSpellSettings(parentContainer, containerT
                 CreateCooldownViewerItemSpellSettings(parentContainer, containerToRefresh)
             end)
             parentContainer:AddChild(removeItemButton)
+
+            local classSpecFilterDropdown = AG:Create("Dropdown")
+            classSpecFilterDropdown:SetLabel(LL("Load On Class/Specialization"))
+            classSpecFilterDropdown:SetList(classSpecFilterList, classSpecFilterOrder)
+            classSpecFilterDropdown:SetMultiselect(true)
+            classSpecFilterDropdown:SetPulloutWidth(360)
+            ApplyItemSpellClassSpecFiltersToDropdown(classSpecFilterDropdown, data.classSpecFilters, classSpecFilterList)
+            classSpecFilterDropdown:SetCallback("OnValueChanged", function(_, _, value, checked)
+                local classToken, specToken = ParseClassSpecDropdownValue(value)
+                if not classToken or not specToken then return end
+                local entry = ItemSpellDB[itemId]
+                if not entry then return end
+                entry.classSpecFilters = entry.classSpecFilters or {}
+                local normalizedValue = classToken .. ":" .. specToken
+                if checked then
+                    entry.classSpecFilters[normalizedValue] = true
+                else
+                    entry.classSpecFilters[normalizedValue] = nil
+                end
+                entry.classSpecFilters = NormalizeItemSpellClassSpecFilters(entry.classSpecFilters, classSpecFilterList)
+                BCDM:UpdateCooldownViewer("ItemSpell")
+            end)
+            classSpecFilterDropdown:SetCallback("OnClosed", function()
+                local entry = ItemSpellDB[itemId]
+                if not (entry and entry.classSpecFilters and next(entry.classSpecFilters)) then
+                    classSpecFilterDropdown:SetText(LL("Always"))
+                end
+            end)
+            classSpecFilterDropdown:SetRelativeWidth(0.2)
+            parentContainer:AddChild(classSpecFilterDropdown)
         end
     end
 
