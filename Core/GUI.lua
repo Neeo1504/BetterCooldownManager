@@ -1987,13 +1987,15 @@ local function CreateCooldownViewerSettings(parentContainer, viewerType)
     iconContainer:SetLayout("Flow")
     ScrollFrame:AddChild(iconContainer)
 
+    local isItemViewer = viewerType == "Item" or viewerType == "ItemSpell"
+
     local keepAspectCheckbox = AG:Create("CheckBox")
     keepAspectCheckbox:SetLabel(LL("Keep Aspect Ratio"))
     keepAspectCheckbox:SetValue(BCDM.db.profile.CooldownManager[viewerType].KeepAspectRatio ~= false)
-    keepAspectCheckbox:SetRelativeWidth((viewerType == "Item" or viewerType == "ItemSpell") and 0.5 or 1)
+    keepAspectCheckbox:SetRelativeWidth(isItemViewer and 0.3333 or 1)
     iconContainer:AddChild(keepAspectCheckbox)
 
-    if viewerType == "Item" or viewerType == "ItemSpell" then
+    if isItemViewer then
         local hideZeroChargesCheckbox = AG:Create("CheckBox")
         hideZeroChargesCheckbox:SetLabel(LL("Hide Items with Zero Charges/Uses"))
         hideZeroChargesCheckbox:SetValue(BCDM.db.profile.CooldownManager[viewerType].HideZeroCharges)
@@ -2001,8 +2003,18 @@ local function CreateCooldownViewerSettings(parentContainer, viewerType)
             BCDM.db.profile.CooldownManager[viewerType].HideZeroCharges = value
             BCDM:UpdateCooldownViewer(viewerType)
         end)
-        hideZeroChargesCheckbox:SetRelativeWidth(0.5)
+        hideZeroChargesCheckbox:SetRelativeWidth(0.3333)
         iconContainer:AddChild(hideZeroChargesCheckbox)
+
+        local showItemQualityCheckbox = AG:Create("CheckBox")
+        showItemQualityCheckbox:SetLabel(LL("Show Item Quality"))
+        showItemQualityCheckbox:SetValue(BCDM.db.profile.CooldownManager[viewerType].ShowItemQualityBorder ~= false)
+        showItemQualityCheckbox:SetCallback("OnValueChanged", function(_, _, value)
+            BCDM.db.profile.CooldownManager[viewerType].ShowItemQualityBorder = value
+            BCDM:UpdateCooldownViewer(viewerType)
+        end)
+        showItemQualityCheckbox:SetRelativeWidth(0.3333)
+        iconContainer:AddChild(showItemQualityCheckbox)
     end
 
     local iconSizeSlider = AG:Create("Slider")
