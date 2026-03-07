@@ -42,7 +42,8 @@ local function EnsureCurves()
         if gcdFilterCurve then
             gcdFilterCurve:SetType(Enum.LuaCurveType.Step)
             gcdFilterCurve:AddPoint(0, 0)
-            gcdFilterCurve:AddPoint(1.6, 1)
+            gcdFilterCurve:AddPoint(1.6, 0)
+            gcdFilterCurve:AddPoint(1.601, 1)
         end
     end
 end
@@ -143,11 +144,15 @@ local function UpdateIconDesaturation(frame, cooldownInfo, durationObject, hasCh
     local icon = frame and frame.Icon
     if not icon then return end
 
+    if cooldownInfo and cooldownInfo.isOnGCD then
+        SetIconDesaturation(icon, 0)
+        return
+    end
+
     if durationObject and not hasChargeSource then
         if durationObject.EvaluateRemainingDuration then
-            local curve = (cooldownInfo and cooldownInfo.isOnGCD) and gcdFilterCurve or desaturationCurve
-            if curve then
-                SetIconDesaturation(icon, durationObject:EvaluateRemainingDuration(curve, 0) or 0)
+            if desaturationCurve then
+                SetIconDesaturation(icon, durationObject:EvaluateRemainingDuration(desaturationCurve, 0) or 0)
             else
                 SetIconDesaturation(icon, CalculateFallbackDesaturation(cooldownInfo))
             end

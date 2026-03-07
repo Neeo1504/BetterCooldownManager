@@ -41,14 +41,97 @@ local function ApplyCooldownText()
     end
 end
 
-local function IsCooldownFrameActive(customIcon)
-    -- Thanks Mapko for this idea!
-    if not customIcon or not customIcon.Cooldown then return end
+local desaturationCurve
+local gcdFilterCurve
 
-    if customIcon.Cooldown:IsShown() then
-        customIcon.Icon:SetDesaturated(true)
+local function IsSecretNumber(value)
+    return type(value) == "number" and type(issecretvalue) == "function" and issecretvalue(value)
+end
+
+local function EnsureCurves()
+    if desaturationCurve and gcdFilterCurve then return end
+    if not (C_CurveUtil and C_CurveUtil.CreateCurve and Enum and Enum.LuaCurveType and Enum.LuaCurveType.Step) then return end
+
+    if not desaturationCurve then
+        desaturationCurve = C_CurveUtil.CreateCurve()
+        if desaturationCurve then
+            desaturationCurve:SetType(Enum.LuaCurveType.Step)
+            desaturationCurve:AddPoint(0, 0)
+            desaturationCurve:AddPoint(0.001, 1)
+        end
+    end
+
+    if not gcdFilterCurve then
+        gcdFilterCurve = C_CurveUtil.CreateCurve()
+        if gcdFilterCurve then
+            gcdFilterCurve:SetType(Enum.LuaCurveType.Step)
+            gcdFilterCurve:AddPoint(0, 0)
+            gcdFilterCurve:AddPoint(1.6, 0)
+            gcdFilterCurve:AddPoint(1.601, 1)
+        end
+    end
+end
+
+local function SetIconDesaturation(icon, value)
+    if not icon then return end
+    if icon.SetDesaturation then
+        icon:SetDesaturation(value)
+        return
+    end
+    if icon.SetDesaturated then
+        icon:SetDesaturated(value > 0)
+    end
+end
+
+local function CalculateFallbackDesaturation(startTime, duration)
+    if not startTime or not duration then return 0 end
+    if IsSecretNumber(startTime) or IsSecretNumber(duration) then return 0 end
+    local remaining = (startTime + duration) - GetTime()
+    return remaining > 0.001 and 1 or 0
+end
+
+local function GetReadableNumber(value)
+    if type(value) ~= "number" then return nil end
+    if IsSecretNumber(value) then return nil end
+    return value
+end
+
+local function UpdateSpellIconDesaturation(customIcon, spellId)
+    if not customIcon or not customIcon.Icon then return end
+    EnsureCurves()
+
+    local cooldownData = C_Spell.GetSpellCooldown(spellId)
+    if cooldownData and cooldownData.isOnGCD then
+        SetIconDesaturation(customIcon.Icon, 0)
+        return
+    end
+
+    local spellCharges = C_Spell.GetSpellCharges(spellId)
+    local currentCharges = spellCharges and GetReadableNumber(spellCharges.currentCharges)
+    if currentCharges then
+        if currentCharges > 0 then
+            SetIconDesaturation(customIcon.Icon, 0)
+            return
+        end
+        local chargeDuration = C_Spell.GetSpellChargeDuration and C_Spell.GetSpellChargeDuration(spellId)
+        if chargeDuration and type(chargeDuration.EvaluateRemainingDuration) == "function" then
+            SetIconDesaturation(customIcon.Icon, (desaturationCurve and chargeDuration:EvaluateRemainingDuration(desaturationCurve, 0)) or CalculateFallbackDesaturation(spellCharges.cooldownStartTime, spellCharges.cooldownDuration))
+        else
+            SetIconDesaturation(customIcon.Icon, CalculateFallbackDesaturation(spellCharges.cooldownStartTime, spellCharges.cooldownDuration))
+        end
+        return
+    end
+
+    local durationObject = C_Spell.GetSpellCooldownDuration and C_Spell.GetSpellCooldownDuration(spellId)
+    if durationObject and type(durationObject.EvaluateRemainingDuration) == "function" then
+        local curve = (cooldownData and cooldownData.isOnGCD) and gcdFilterCurve or desaturationCurve
+        SetIconDesaturation(customIcon.Icon, (curve and durationObject:EvaluateRemainingDuration(curve, 0)) or 0)
     else
-        customIcon.Icon:SetDesaturated(false)
+        if not cooldownData then
+            SetIconDesaturation(customIcon.Icon, 0)
+        else
+            SetIconDesaturation(customIcon.Icon, CalculateFallbackDesaturation(cooldownData.startTime, cooldownData.duration))
+        end
     end
 end
 
@@ -354,7 +437,14 @@ local function CreateCustomItemIcon(itemId)
                 local cooldownStartMs, cooldownDurationMs = customIcon.Cooldown:GetCooldownTimes()
                 local frameHasCooldown = (cooldownStartMs and cooldownDurationMs and cooldownStartMs > 0 and cooldownDurationMs > 0) or false
                 local isOnCooldown = hasActiveCooldown or frameHasCooldown
-                customIcon.Icon:SetDesaturated(itemCount <= 0 or isOnCooldown)
+                EnsureCurves()
+                if IsSecretNumber(startTime) or IsSecretNumber(durationTime) then
+                    SetIconDesaturation(customIcon.Icon, 0)
+                elseif hasActiveCooldown then
+                    SetIconDesaturation(customIcon.Icon, CalculateFallbackDesaturation(startTime, durationTime))
+                else
+                    SetIconDesaturation(customIcon.Icon, 0)
+                end
                 if not C_Item.IsUsableItem(itemId) then customIcon.Icon:SetVertexColor(0.5, 0.5, 0.5) else customIcon.Icon:SetVertexColor(1, 1, 1) end
                 customIcon.Charges:SetAlphaFromBoolean(itemCount > 1, 1, 0)
             end
@@ -439,6 +529,7 @@ local function CreateCustomSpellIcon(spellId)
                 customIcon.Cooldown:SetCooldown(cooldownData.startTime, cooldownData.duration)
                 customIcon.Charges:SetText("")
             end
+            UpdateSpellIconDesaturation(self, spellId)
         end
     end)
 
