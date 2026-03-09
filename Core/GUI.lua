@@ -262,6 +262,26 @@ local function TitleCaseToken(token)
     return token:gsub("^%l", string.upper)
 end
 
+local function BuildMainNavigationTree()
+    return {
+        { text = LL("General"), value = "General" },
+        { text = LL("Global"), value = "Global" },
+        { text = LL("Edit Mode Manager"), value = "EditModeManager" },
+        { text = LL("Essential"), value = "Essential" },
+        { text = LL("Utility"), value = "Utility" },
+        { text = LL("Buffs"), value = "Buffs" },
+        { text = LL("Custom"), value = "Custom" },
+        { text = LL("Additional Custom"), value = "AdditionalCustom" },
+        { text = LL("Item"), value = "Item" },
+        { text = LL("Trinkets"), value = "Trinket" },
+        { text = LL("Items & Spells"), value = "ItemSpell" },
+        { text = LL("Power Bar"), value = "PowerBar" },
+        { text = LL("Secondary Power Bar"), value = "SecondaryPowerBar" },
+        { text = LL("Cast Bar"), value = "CastBar" },
+        { text = LL("Profiles"), value = "Profiles" },
+    }
+end
+
 local function FormatClassLabel(classLabel, classToken)
     if not classToken or not CLASS_ICON_TCOORDS or not CLASS_ICON_TCOORDS[classToken] then
         return classLabel
@@ -3251,7 +3271,7 @@ function BCDM:CreateGUI()
     Container = AG:Create("Frame")
     Container:SetTitle(BCDM.PRETTY_ADDON_NAME)
     Container:SetLayout("Fill")
-    Container:SetWidth(900)
+    Container:SetWidth(1100)
     Container:SetHeight(600)
     Container:EnableResize(false)
     Container:SetCallback("OnClose", function(widget) AG:Release(widget) LEMO:ApplyChanges() BCDM:UpdateBCDM() isGUIOpen = false BCDM.CAST_BAR_TEST_MODE = false BCDM:CreateTestCastBar() BCDM.EssentialCooldownViewerOverlay:Hide() BCDM.UtilityCooldownViewerOverlay:Hide() BCDM.BuffIconCooldownViewerOverlay:Hide() if CooldownViewerSettings:IsShown() then CooldownViewerSettings:Hide() end end)
@@ -3304,29 +3324,29 @@ function BCDM:CreateGUI()
         GenerateSupportText(Container)
     end
 
-    local ContainerTabGroup = AG:Create("TabGroup")
-    ContainerTabGroup:SetLayout("Flow")
-    ContainerTabGroup:SetFullWidth(true)
-    ContainerTabGroup:SetTabs({
-        { text = LL("General"), value = "General"},
-        { text = LL("Global"), value = "Global"},
-        { text = LL("Edit Mode Manager"), value = "EditModeManager"},
-        { text = LL("Essential"), value = "Essential"},
-        { text = LL("Utility"), value = "Utility"},
-        { text = LL("Buffs"), value = "Buffs"},
-        { text = LL("Custom"), value = "Custom"},
-        { text = LL("Additional Custom"), value = "AdditionalCustom"},
-        { text = LL("Item"), value = "Item"},
-        { text = LL("Trinkets"), value = "Trinket"},
-        { text = LL("Items & Spells"), value = "ItemSpell"},
-        { text = LL("Power Bar"), value = "PowerBar"},
-        { text = LL("Secondary Power Bar"), value = "SecondaryPowerBar"},
-        { text = LL("Cast Bar"), value = "CastBar"},
-        { text = LL("Profiles"), value = "Profiles"},
-    })
-    ContainerTabGroup:SetCallback("OnGroupSelected", SelectTab)
-    ContainerTabGroup:SelectTab("General")
-    Container:AddChild(ContainerTabGroup)
+    local mainNavigationTree = BuildMainNavigationTree()
+    local mainNavigationValues = {}
+    for _, entry in ipairs(mainNavigationTree) do
+        mainNavigationValues[entry.value] = true
+    end
+
+    BCDMGUI.MainNavigationStatus = BCDMGUI.MainNavigationStatus or {}
+
+    local ContainerTreeGroup = AG:Create("TreeGroup")
+    ContainerTreeGroup:SetLayout("Fill")
+    ContainerTreeGroup:SetFullWidth(true)
+    ContainerTreeGroup:SetFullHeight(true)
+    ContainerTreeGroup:SetStatusTable(BCDMGUI.MainNavigationStatus)
+    ContainerTreeGroup:SetTreeWidth(220, false)
+    ContainerTreeGroup:SetTree(mainNavigationTree)
+    ContainerTreeGroup:SetCallback("OnGroupSelected", SelectTab)
+    Container:AddChild(ContainerTreeGroup)
+
+    local initialSection = BCDMGUI.MainNavigationStatus.selected
+    if not initialSection or not mainNavigationValues[initialSection] then
+        initialSection = "General"
+    end
+    ContainerTreeGroup:SelectByValue(initialSection)
 end
 
 function BCDMG:OpenBCDMGUI()
