@@ -489,11 +489,11 @@ local function CreateCustomSpellIcon(spellId)
             local spellCharges = C_Spell.GetSpellCharges(spellId)
             if spellCharges then
                 customIcon.Charges:SetText(tostring(spellCharges.currentCharges))
-                customIcon.Cooldown:SetCooldown(spellCharges.cooldownStartTime, spellCharges.cooldownDuration)
+                local spellChargeCooldown = C_Spell.GetSpellChargeCooldown(spellId)
+                customIcon.Cooldown:SetCooldownFromDurationObject(spellChargeCooldown, true)
             else
-                local cooldownData = C_Spell.GetSpellCooldown(spellId)
-                customIcon.Cooldown:SetCooldown(cooldownData.startTime, cooldownData.duration)
-                customIcon.Charges:SetText("")
+                local spellCooldown = C_Spell.GetSpellCooldownDuration(spellId)
+                customIcon.Cooldown:SetCooldownFromDurationObject(spellCooldown, true)
             end
             UpdateSpellIconDesaturation(self, spellId)
         end
