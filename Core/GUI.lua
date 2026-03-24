@@ -31,7 +31,20 @@ local function SetFontForAceWidget(widget, fontSize)
     end
 end
 
-local AnchorPoints = { { ["TOPLEFT"] = LL("Top Left"), ["TOP"] = LL("Top"), ["TOPRIGHT"] = LL("Top Right"), ["LEFT"] = LL("Left"), ["CENTER"] = LL("Center"), ["RIGHT"] = LL("Right"), ["BOTTOMLEFT"] = LL("Bottom Left"), ["BOTTOM"] = LL("Bottom"), ["BOTTOMRIGHT"] = LL("Bottom Right") }, { "TOPLEFT", "TOP", "TOPRIGHT", "LEFT", "CENTER", "RIGHT", "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT", } }
+local AnchorPoints = {
+    {
+        ["TOPLEFT"] = LL("Top Left"),
+        ["TOP"] = LL("Top"),
+        ["TOPRIGHT"] = LL("Top Right"),
+        ["LEFT"] = LL("Left"),
+        ["CENTER"] = LL("Center"),
+        ["RIGHT"] = LL("Right"),
+        ["BOTTOMLEFT"] = LL("Bottom Left"),
+        ["BOTTOM"] = LL("Bottom"),
+        ["BOTTOMRIGHT"] = LL("Bottom Right"),
+    },
+    { "TOPLEFT", "TOP", "TOPRIGHT", "LEFT", "CENTER", "RIGHT", "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT", }
+}
 
 local PowerNames = {
     [0] = LL("Mana"),
@@ -856,10 +869,10 @@ local function CreateCustomGlowSettings(parentContainer)
     local glowType = AG:Create("Dropdown")
     glowType:SetLabel(LL("Glow Type"))
     glowType:SetList({
-        Pixel = "Pixel",
-        Autocast = "Autocast",
-        Proc = "Proc",
-        Button = "Action Button",
+		Pixel = LL("Pixel"),
+		Autocast = LL("Autocast"),
+		Proc = LL("Proc"),
+		Button = LL("Action Button"),
     })
     glowType:SetValue(glowSettings.Type or "Pixel")
     glowType:SetRelativeWidth(0.5)
