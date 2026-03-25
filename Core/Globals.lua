@@ -657,7 +657,7 @@ function BCDM:RestoreMirrorFrames()
             end
         end
     end
-
+    
     if MirrorTimerFrame_Update then
         MirrorTimerFrame_Update()
     end
